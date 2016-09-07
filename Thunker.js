@@ -64,8 +64,9 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	exports.default = {
 	  create: function create() {
-	    var storeQueue = [];
+	    var storeQueue = []; // DEPRECATED
 	    var actionQueue = [];
+	    var stateBecomesQueue = [];
 
 	    var waitForAction = function waitForAction(actionFn) {
 	      var cb = arguments.length <= 1 || arguments[1] === undefined ? function () {} : arguments[1];
@@ -74,6 +75,28 @@ return /******/ (function(modules) { // webpackBootstrap
 	          return resolve(state);
 	        }]]);
 	      }).then(cb);
+	    };
+
+	    var stateBecomes = function stateBecomes(successFn, failureFn) {
+	      if (!successFn || !failureFn) {
+	        console.warning('Both success and failure functions required');
+	      }
+
+	      return new Promise(function (resolve, reject) {
+	        // push the check state function onto the queue. To pass knowledge
+	        // that these have resolved in some form, we return a bool
+	        stateBecomesQueue.push(function (state) {
+	          if (successFn(state)) {
+	            resolve(state);
+	            return true;
+	          } else if (failureFn(state)) {
+	            reject(state);
+	            return true;
+	          }
+
+	          return false;
+	        });
+	      });
 	    };
 
 	    return function (store) {
@@ -85,6 +108,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	          var state = getState();
 
+	          // DEPRECATED
 	          var waitForState = function waitForState(stateFn) {
 	            var cb = arguments.length <= 1 || arguments[1] === undefined ? function () {} : arguments[1];
 	            var stateFailedFn = arguments.length <= 2 || arguments[2] === undefined ? function () {} : arguments[2];
@@ -101,7 +125,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	          };
 
 	          if (typeof action === 'function') {
-	            var result = action(dispatch, getState, { waitForState: waitForState, waitForAction: waitForAction });
+	            var result = action(dispatch, getState, { waitForState: waitForState, waitForAction: waitForAction, stateBecomes: stateBecomes });
 
 	            if (!(result instanceof Promise)) {
 	              throw new Error('Thunked actions must return promises');
@@ -130,6 +154,12 @@ return /******/ (function(modules) { // webpackBootstrap
 	          // waitForState situations are resolveable
 	          next(action);
 
+	          // run the state checks, removing any resolutions
+	          stateBecomesQueue = stateBecomesQueue.filter(function (stateCheck) {
+	            return stateCheck(state);
+	          });
+
+	          // DEPRECATED
 	          // also important, the store queue filter function must re-fetch state
 	          // using getState, otherwise the aforementioned action's effects will not
 	          // be reflected in the filter function.
